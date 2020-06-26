@@ -1,0 +1,14 @@
+All_data/
+infos/
+new_test/
+soa_paper/
+soa_paper_hico/
+7850-teaser.gif
+download_data.sh
+download_res.sh
+README.md
+requirements.txt
+requirements3.txt
+LICENSE
+__pycache_
+*.pyc
