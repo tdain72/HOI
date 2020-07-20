@@ -85,6 +85,7 @@ class vcoco_Dataset(Dataset):
         ):
         with open(json_file_image) as json_file_:
             self.vcoco_frame_file = json.load(json_file_)
+
         self.flag = json_file_image.split('/')[-1].split('_')[0]
         if self.flag == 'train':
             self.vcoco_frame = [x for x in list(self.vcoco_frame_file.keys())

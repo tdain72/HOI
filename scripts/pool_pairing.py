@@ -40,6 +40,7 @@ def get_pool_loc(
         a = helpers_pre.get_compact_detections(this_image, flag)
         (roi_pers, roi_objs) = (a['person_bbx'], a['objects_bbx'])
         union_box = helpers_pre.get_attention_maps(this_image, flag)
+        # union_box = helpers_pre.get_attention_maps_mod(this_image, flag, H=64, W=64)
         union_box_out.append(torch.tensor(union_box).cuda().float())
 
         (W, H, C) = (ims[batch].size()[1], ims[batch].size()[2],
@@ -205,3 +206,92 @@ def pairing(
 
     return (torch.cat(pairs_out), torch.cat(pers_out),
             torch.cat(objs_out))
+
+
+# ROI Pool mod
+def get_pool_loc_mod(
+    ims,
+    image_id,
+    flag_,
+    pairs_info,
+    size=(7, 7),
+    spatial_scale=1,
+    batch_size=1,
+    ):
+    spatial_locs = []
+    union_box_out = []
+    pers_out = []
+    objs_out = []
+    print(ims.size())
+    print(pairs_info)
+    flag = 'train'
+    max_pool = nn.AdaptiveMaxPool2d(size)
+
+    for batch in range(batch_size):
+        this_image = int(image_id[batch])
+
+        if int(flag_[batch][0]) == 0:
+            flag = 'train'
+        elif int(flag_[batch][0]) == 1:
+            flag = 'val'
+        elif int(flag_[batch][0]) == 2:
+            flag = 'test'
+
+        a = helpers_pre.get_compact_detections(this_image, flag)
+        (roi_pers, roi_objs) = (a['person_bbx'], a['objects_bbx'])
+        union_box = helpers_pre.get_attention_maps(this_image, flag)
+        # union_box = helpers_pre.get_attention_maps_mod(this_image, flag, H=64, W=64)
+        union_box_out.append(torch.tensor(union_box).cuda().float())
+
+        (W, H, C) = (ims[batch].size()[1], ims[batch].size()[2],
+                     ims[batch].size()[0])
+        spatial_scale = [W, H, W, H]
+        image_this_batch = ims[batch]
+        print("ROI:",image_this_batch.size())
+        roi_pers = roi_pers * spatial_scale
+        roi_objs = roi_objs * spatial_scale
+
+        # #### Pooling Persons ##########
+
+        for (index, roi_val) in enumerate(roi_pers):
+            (x1, y1, x2, y2) = (int(roi_val[0]), int(roi_val[1]),
+                                int(roi_val[2]), int(roi_val[3]))
+            sp = [
+                x1,
+                y1,
+                x2,
+                y2,
+                x2 - x1,
+                y2 - y1,
+                ]
+            im = image_this_batch.narrow(0, 0,
+                    image_this_batch.size()[0])[..., y1:y2 + 1, x1:x2
+                    + 1]
+            pooled = max_pool(im)
+            pers_out.append(pooled)
+            spatial_locs.append(sp)
+
+        # ## Pooling Objects #####
+
+        for (index, roi_val) in enumerate(roi_objs):
+            (x1, y1, x2, y2) = (int(roi_val[0]), int(roi_val[1]),
+                                int(roi_val[2]), int(roi_val[3]))
+            sp = [
+                x1,
+                y1,
+                x2,
+                y2,
+                x2 - x1,
+                y2 - y1,
+                ]
+            im = image_this_batch.narrow(0, 0,
+                    image_this_batch.size()[0])[..., y1:y2 + 1, x1:x2
+                    + 1]
+            pooled = max_pool(im)
+            objs_out.append(pooled)
+            spatial_locs.append(sp)
+
+    # import pdb;pdb.set_trace()
+
+    return (torch.stack(pers_out), torch.stack(objs_out), spatial_locs,
+            torch.cat(union_box_out))

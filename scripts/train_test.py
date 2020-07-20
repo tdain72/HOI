@@ -197,6 +197,7 @@ def train_test(
     start_epoch,
     mean_best,
     visualize,
+    single_image,
     ):
 
 #### Creating the folder where the results would be stored##########
@@ -257,7 +258,7 @@ def train_test(
                 model.train()
             else:
                 model.eval()
-
+            # model.eval()
             print('In {}'.format(phase))
             detections_train = []
             detections_val = []
@@ -304,7 +305,7 @@ def train_test(
                 true_single = labels_single.data.cpu().numpy()
 
                 with torch.set_grad_enabled(phase == 'train' or phase
-                        == 'val'):
+                        == 'val'): #or phase == 'test'):
                     model_out = model(
                         inputs,
                         pairs_info,
@@ -317,6 +318,10 @@ def train_test(
                     outputs_single = model_out[1]
                     outputs_combine = model_out[2]
                     outputs_gem = model_out[3]
+                    union_box = model_out[4]
+                    rois_people = model_out[5]
+                    rois_object = model_out[6]
+                    context = model_out[7]
 
                 # outputs_pose=model_out[7]
 
@@ -327,7 +332,7 @@ def train_test(
                         sigmoid(outputs_single).data.cpu().numpy()
                     predicted_gem = \
                         sigmoid(outputs_gem).data.cpu().numpy()
-                    predicted_HOI_pair = predicted_HOI
+                    predicted_HOI_pair = predicted_HOI        
                     
                 # predicted_HOI_pose=sigmoid(outputs_pose).data.cpu().numpy()
 
@@ -424,7 +429,8 @@ def train_test(
                         prior.apply_prior(class_ids_extended[1:],
                             predicted_HOI)
                     predicted_HOI = loss_mask * predicted_HOI
-
+                    
+                      
                 # ### Calculating Loss############
 
                     N_b = minbatch_size * 29  # *int(total_elements[0])#*29 #pairs_info[1]*pairs_info[2]*pairs_info[3]
@@ -432,28 +438,25 @@ def train_test(
                         torch.Tensor(objects_score_extended[1:]
                             * persons_score_extended[1:]
                             * loss_mask).cuda()
+
                     lossf = torch.sum(loss_com_combine(sigmoid(outputs)
                             * sigmoid(outputs_combine)
                             * sigmoid(outputs_single) * hum_obj_mask
-                            * sigmoid(outputs_gem), labels.float())) \
-                        / N_b
+                            * sigmoid(outputs_gem), labels.float())) / N_b
                     lossc = lossf.item()
 
                     acc_epoch += lossc
                     iteration += 1
+
                     if phase == 'train' or phase == 'val':  # ### Flowing the loss backwards#########
                         lossf.backward()
                         optimizer.step()
+                # ###### If we want to do Visualization#########....
 
-                # ##########################################################
-
-                    del lossf
-                    del model_out
-                    del inputs
-                    del outputs
-                    del labels
-
-            # ###### If we want to do Visualization#########....
+                prediction = sigmoid(outputs)\
+                    * sigmoid(outputs_combine)\
+                    * sigmoid(outputs_single) * hum_obj_mask\
+                    * sigmoid(outputs_gem) ##mod
 
                 if visualize != 'f':
                     viss.visual(
@@ -467,7 +470,22 @@ def train_test(
                         predicted_HOI_combine,
                         predicted_HOI_pair,
                         true,
-                        )
+                        single_image,
+                        model,
+                        prediction,
+                        union_box,
+                        rois_people,
+                        rois_object,
+                        context,
+                        ) 
+                
+                # ##########################################################
+
+                    del lossf
+                    del model_out
+                    del inputs
+                    del outputs
+                    del labels
 
             # ####################################################################
 

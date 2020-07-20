@@ -7,6 +7,7 @@ import torch.nn as nn
 import os
 import numpy as np
 import pool_pairing as ROI
+import helpers_preprocess as helpers_pre
 
 import torchvision.models as models
 
@@ -35,11 +36,12 @@ class VSGNet(nn.Module):
         super(VSGNet, self).__init__()
 
         model = models.resnet152(pretrained=True)
+
         self.flat = Flatten()
 
         self.Conv_pretrain = nn.Sequential(*list(model.children())[0:7])  # # Resnets,resnext
 
-                # ######## Convolutional Blocks for human,objects and the context##############################
+        # ######## Convolutional Blocks for human,objects and the context##############################
 
         self.Conv_people = nn.Sequential(
             nn.Conv2d(1024, 512, kernel_size=(1, 1), stride=(1, 1),
@@ -87,16 +89,17 @@ class VSGNet(nn.Module):
             nn.ReLU(inplace=False),
             )
 
-               # ##############################################################################################
+        # ##############################################################################################
 
-                # #### Attention Feature Model######
+        # #### Attention Feature Model######
 
         self.conv_sp_map = nn.Sequential(nn.Conv2d(2, 64,
                 kernel_size=(5, 5)), nn.MaxPool2d(kernel_size=(2, 2)),
                 nn.Conv2d(64, 32, kernel_size=(5, 5)),
                 nn.MaxPool2d(kernel_size=(2, 2)), nn.AvgPool2d((13,
                 13), padding=0, stride=(1, 1)))  # nn.Conv2d(3, 64, kernel_size=(5, 5)),
-
+        self.conv_sp_map_test1 = nn.Sequential(*list(self.conv_sp_map.children())[0:4])
+        self.conv_sp_map_test2 = nn.Sequential(*list(self.conv_sp_map.children())[4:5])
                 # nn.Linear(32,1024),
                 # nn.ReLU()
 
@@ -104,20 +107,20 @@ class VSGNet(nn.Module):
 
                 # ######################################
 
-                # ## Prediction Model for attention features#######
+        # ## Prediction Model for attention features#######
 
         self.lin_spmap_tail = nn.Sequential(nn.Linear(512, 29))
 
         # #################################################
 
-                # ######## Graph Model Basic Structure ########################
+        # ######## Graph Model Basic Structure ########################
 
         self.peo_to_obj_w = nn.Sequential(nn.Linear(1024, 1024),
                 nn.ReLU())
         self.obj_to_peo_w = nn.Sequential(nn.Linear(1024, 1024),
                 nn.ReLU())
 
-                # ################################################################
+        # ################################################################
 
         # Interaction prediction model for visual features######################
 
@@ -132,7 +135,7 @@ class VSGNet(nn.Module):
 
                 # ################################################################
 
-                # ######### Prediction model for visual features#################
+        # ######### Prediction model for visual features#################
 
         self.lin_visual_head = nn.Sequential(nn.Linear(lin_size * 3
                 + 4, 1024), nn.Linear(1024, 512), nn.ReLU())  # nn.Linear(2048, 29),
@@ -146,7 +149,7 @@ class VSGNet(nn.Module):
 
                 # ###############################################
 
-                # ###### Prediction model for graph features##################
+        # ###### Prediction model for graph features##################
 
         self.lin_graph_head = nn.Sequential(nn.Linear(lin_size * 2,
                 1024), nn.Linear(1024, 512), nn.ReLU())  # nn.Linear(2048, 29),
@@ -158,30 +161,36 @@ class VSGNet(nn.Module):
 
         self.sigmoid = nn.Sigmoid()
 
-        #### New Test Model
+        # New Test Model
+        self.conv_sp_map_mod = nn.Sequential(nn.Conv2d(2, 64,
+        kernel_size=(3, 3)), nn.MaxPool2d(kernel_size=(2, 2)),
+        nn.Conv2d(64, 256, kernel_size=(3, 3)),
+        nn.Conv2d(256, 512, kernel_size=(3, 3)),
+        nn.Conv2d(512, 1024, kernel_size=(3, 3)))
+        # nn.AvgPool2d((13, 13), padding=0, stride=(1, 1)))
+        
+        self.gradients = None
+        self.gradients_people = None
+        self.gradients_object = None
+        self.gradients_context = None
+        self.gradients_sp = None
 
-        self.Conv_Additional = nn.Sequential(
-            nn.Conv2d(3, 256, kernel_size=(3, 3), stride=(1, 1),
-                      bias=False),
-            nn.BatchNorm2d(256, eps=1e-05, momentum=0.1, affine=True,
-                           track_running_stats=True),
-            nn.Conv2d(256, 512, kernel_size=(3, 3), stride=(1, 1),
-                      bias=False),
-            nn.BatchNorm2d(512, eps=1e-05, momentum=0.1, affine=True,
-                           track_running_stats=True),
-            nn.Conv2d(512, 1024, kernel_size=(3, 3), stride=(1, 1),
-                      bias=False),
-            nn.BatchNorm2d(1024, eps=1e-05, momentum=0.1, affine=True,
-                           track_running_stats=True),
-            nn.ReLU(inplace=False),
-            )
 
-        self.conv_sp_map_new = nn.Sequential(nn.Conv2d(2, 64,
-                kernel_size=(5, 5)), nn.MaxPool2d(kernel_size=(2, 2)),
-                nn.Conv2d(64, 32, kernel_size=(5, 5)),
-                nn.MaxPool2d(kernel_size=(2, 2)), nn.AvgPool2d((13,
-                13), padding=0, stride=(1, 1)))
+    def activations_hook(self, grad):
+        self.gradients = grad
+    
+    def activations_hook_people(self, grad):
+        self.gradients_people = grad
 
+    def activations_hook_object(self, grad):
+        self.gradients_object = grad
+    
+    def activations_hook_context(self, grad):
+        self.gradients_context = grad
+
+    def activations_hook_sp(self, grad):
+        self.gradients_sp = grad
+    
     def forward(
         self,
         x,
@@ -191,7 +200,8 @@ class VSGNet(nn.Module):
         flag_,
         phase,
         ):
-        out1 = self.Conv_pretrain(x)  # ##
+        out1 = self.Conv_pretrain(x)  # ## 
+        # out1.register_hook(self.activations_hook)
 
         (rois_people, rois_objects, spatial_locs, union_box) = \
             ROI.get_pool_loc(
@@ -209,6 +219,7 @@ class VSGNet(nn.Module):
         hum_pool = nn.AvgPool2d(pool_size, padding=0, stride=(1, 1))
         obj_pool = nn.AvgPool2d(pool_size, padding=0, stride=(1, 1))
         context_pool = nn.AvgPool2d((x, y), padding=0, stride=(1, 1))
+        # drop_out = nn.Dropout(p=0.5)
 
         # ################################################
 
@@ -216,8 +227,10 @@ class VSGNet(nn.Module):
 
         residual_people = rois_people
         res_people = self.Conv_people(rois_people) + residual_people
+        # res_people.register_hook(self.activations_hook_people)
         res_av_people = hum_pool(res_people)
         out2_people = self.flat(res_av_people)
+
 
         # ##########
 
@@ -225,6 +238,7 @@ class VSGNet(nn.Module):
 
         residual_objects = rois_objects
         res_objects = self.Conv_objects(rois_objects) + residual_objects
+        # res_objects.register_hook(self.activations_hook_object)
         res_av_objects = obj_pool(res_objects)
         out2_objects = self.flat(res_av_objects)
 
@@ -234,15 +248,20 @@ class VSGNet(nn.Module):
 
         residual_context = out1
         res_context = self.Conv_context(out1) + residual_context
+        # res_context.register_hook(self.activations_hook_context)
         res_av_context = context_pool(res_context)
+        # res_av_context = drop_out(res_av_context)
         out2_context = self.flat(res_av_context)
 
         # ################
 
-        # #Attention Features##
 
-        out2_union = \
-            self.spmap_up(self.flat(self.conv_sp_map(union_box)))
+        # #Attention Features##
+        # out2_union = self.conv_sp_map(union_box)
+        out2_union = self.conv_sp_map_test1(union_box)
+        # out2_union.register_hook(self.activations_hook_sp)
+        out2_union = self.conv_sp_map_test2(out2_union)
+        out2_union = self.spmap_up(self.flat(out2_union))
 
         # ###########################
 
@@ -254,7 +273,6 @@ class VSGNet(nn.Module):
     # ###################################
 
         # ##### Interaction Probability##########
-
         lin_single_h = self.lin_single_head(pairs)
         lin_single_t = lin_single_h * out2_union
         lin_single = self.lin_single_tail(lin_single_t)
@@ -385,4 +403,42 @@ class VSGNet(nn.Module):
 
         # ############################
 
-        return [lin_visual, lin_single, lin_graph, lin_att]  # ,lin_obj_ids]
+        return [lin_visual, lin_single, lin_graph, lin_att, union_box, rois_people, rois_objects, out1]  # ,lin_obj_ids]
+
+    # Resnet feature
+    def get_activations_gradient(self):
+        return self.gradients
+
+    def get_activations(self, x):
+        return self.Conv_pretrain(x)
+    
+    # Attention feature
+    def get_activations_gradient_sp(self):
+        return self.gradients_sp
+
+    def get_activations_sp(self, x):
+        return self.conv_sp_map_test1(x)
+
+    # Human feature
+
+    def get_activations_gradient_people(self):
+        return self.gradients_people
+
+    def get_activations_people(self, x):
+        return self.Conv_people(x) + x
+
+    # Object feature
+
+    def get_activations_gradient_object(self):
+        return self.gradients_object
+
+    def get_activations_object(self, x):
+        return self.Conv_objects(x) + x
+    
+    # Context feature
+
+    def get_activations_gradient_context(self):
+        return self.gradients_context
+
+    def get_activations_context(self, x):
+        return self.Conv_context(x) + x

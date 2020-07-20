@@ -130,8 +130,15 @@ parser.add_argument(
     type=str,
     required=False,
     default='best',
-    help='First word of the checkpoint file which would be followed by checkpoint.pth.tar'
-        ,
+    help='First word of the checkpoint file which would be followed by checkpoint.pth.tar',
+    )
+parser.add_argument(
+    '-s_i',
+    '--single_image',
+    type=str,
+    required=False,
+    default='f',
+    help='If this flag is t then you can use single image as input.'
     )
 
 args = parser.parse_args()
@@ -147,6 +154,7 @@ infr = args.inference
 hyp = args.hyper_load
 visualize = args.Visualize
 check = args.Check_point
+single_image = args.single_image
 
 ###############################################################################3
 
@@ -164,15 +172,26 @@ annotation_test = all_data_dir \
     + 'Annotations_vcoco/test_annotations.json'
 image_dir_test = all_data_dir + 'Data_vcoco/val2014/'
 
-vcoco_train = vcoco_Dataset(annotation_train, image_dir_train,
+if single_image != 'f':
+    vcoco_train = vcoco_Dataset(annotation_train, image_dir_train,
                             transform=transforms.Compose([Rescale((400,
                             400)), ToTensor()]))
-vcoco_val = vcoco_Dataset(annotation_val, image_dir_val,
-                          transform=transforms.Compose([Rescale((400,
-                          400)), ToTensor()]))
-vcoco_test = vcoco_Dataset(annotation_test, image_dir_test,
-                           transform=transforms.Compose([Rescale((400,
-                           400)), ToTensor()]))
+    vcoco_val = vcoco_Dataset(annotation_val, image_dir_val,
+                            transform=transforms.Compose([Rescale((400,
+                            400)), ToTensor()]))
+    vcoco_test = vcoco_Dataset(annotation_test, image_dir_test,
+                            transform=transforms.Compose([Rescale((400,
+                            400)), ToTensor()]))
+else:
+    vcoco_train = vcoco_Dataset(annotation_train, image_dir_train,
+                                transform=transforms.Compose([Rescale((400,
+                                400)), ToTensor()]))
+    vcoco_val = vcoco_Dataset(annotation_val, image_dir_val,
+                            transform=transforms.Compose([Rescale((400,
+                            400)), ToTensor()]))
+    vcoco_test = vcoco_Dataset(annotation_test, image_dir_test,
+                            transform=transforms.Compose([Rescale((400,
+                            400)), ToTensor()]))
 
 # import pdb;pdb.set_trace()
 
@@ -218,6 +237,7 @@ single = []
 for (name, p) in res.named_parameters():
     if name.split('.')[0] == 'Conv_pretrain':
         p.requires_grad = False
+        # p.requires_grad = True
         not_trainables.append(p)
     else:
         if name.split('.')[0] == 'conv_sp_map' or name.split('.')[0] \
@@ -279,4 +299,5 @@ if __name__ == '__main__':
         epoch,
         mean_best,
         visualize,
+        single_image,
         )

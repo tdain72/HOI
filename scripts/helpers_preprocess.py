@@ -132,6 +132,7 @@ def get_compact_detections(segment_key, flag):
         ) = get_detections(segment_key, flag)
     img_W = shape[0]
     img_H = shape[1]
+
     no_person_dets = len(d_p_boxes)
     no_object_dets = len(d_o_boxes)
     persons_np = np.zeros([no_person_dets, 4], np.float32)
@@ -163,7 +164,20 @@ def get_attention_maps(segment_key, flag):
     for dd_i in range(no_person_dets):
         for do_i in range(len(objects_np)):
             union_box.append(union_BOX(persons_np[dd_i],
-                             objects_np[do_i], segment_key))
+                             objects_np[do_i], segment_key, H=64, W=64))
+    return np.concatenate(union_box)
+
+def get_attention_maps_mod(segment_key, flag, H=64, W=64):
+    compact_detections = get_compact_detections(segment_key, flag)
+    (persons_np, objects_np) = (compact_detections['person_bbx'],
+                                compact_detections['objects_bbx'])
+    union_box = []
+    no_person_dets = len(persons_np)
+    no_object_dets = len(objects_np)
+    for dd_i in range(no_person_dets):
+        for do_i in range(len(objects_np)):
+            union_box.append(union_BOX_mod(persons_np[dd_i],
+                             objects_np[do_i], segment_key, H, W))
     return np.concatenate(union_box)
 
 
@@ -269,6 +283,23 @@ def union_BOX(
                roi_pers[2] + 1] = 100
     sample_box[0, 1, roi_objs[1]:roi_objs[3] + 1, roi_objs[0]:
                roi_objs[2] + 1] = 100
+    return sample_box
+
+def union_BOX_mod(
+    roi_pers,
+    roi_objs,
+    segment_key,
+    H=64,
+    W=64,
+    ):
+    assert H == W
+    roi_pers = np.array(roi_pers * H, dtype=int)
+    roi_objs = np.array(roi_objs * H, dtype=int)
+    sample_box = np.zeros([1, 1, H, W])
+    sample_box[0, 0, roi_pers[1]:roi_pers[3] + 1, roi_pers[0]:
+               roi_pers[2] + 1] = 1
+    sample_box[0, 0, roi_objs[1]:roi_objs[3] + 1, roi_objs[0]:
+               roi_objs[2] + 1] = 1
     return sample_box
 
 

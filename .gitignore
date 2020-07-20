@@ -1,6 +1,7 @@
 All_data/
 infos/
 new_test/
+new_test2/
 soa_paper/
 soa_paper_hico/
 7850-teaser.gif
@@ -12,3 +13,5 @@ requirements3.txt
 LICENSE
 __pycache_
 *.pyc
+separated_data/
+.vscode/

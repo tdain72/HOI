@@ -12,6 +12,7 @@ def apply_prior(Object, prediction_HOI_in):
     prediction_HOI = np.ones(prediction_HOI_in.shape)
     for (index, prediction) in enumerate(prediction_HOI):
         prediction_HOI[index] = priors[int(Object[index])]
+        
     return prediction_HOI
 
 
